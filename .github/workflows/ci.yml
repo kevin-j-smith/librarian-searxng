@@ -1,0 +1,34 @@
+# Tests run against the current librarian main branch: this package is a
+# plugin installed into librarian's environment, not a standalone library.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: librarian-searxng
+      - uses: actions/checkout@v4
+        with:
+          repository: kevin-j-smith/librarian
+          path: librarian
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install librarian, then this plugin into its environment
+        working-directory: librarian
+        run: |
+          uv sync --frozen
+          uv pip install --no-deps -e ../librarian-searxng
+      - name: Test
+        working-directory: librarian-searxng
+        run: ../librarian/.venv/bin/python -m pytest tests -q

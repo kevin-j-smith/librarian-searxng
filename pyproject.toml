@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "librarian-searxng"
+version = "0.1.0"
+description = "SearXNG search backend plugin for librarian's research loop"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Kevin J. Smith" }]
+keywords = ["librarian", "searxng", "metasearch", "research", "plugin"]
+# `librarian` is expected to be installed already: this plugin is installed
+# *into* librarian's environment (see README). It is not on PyPI under this
+# name, so do not expect pip to fetch it.
+dependencies = [
+    "librarian>=0.1",
+    "httpx>=0.27",
+]
+
+[project.urls]
+Homepage = "https://github.com/kevin-j-smith/librarian-searxng"
+librarian = "https://github.com/kevin-j-smith/librarian"
+
+[project.entry-points."librarian.search_backends"]
+searxng = "librarian_searxng.backend:SearxngBackend"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/librarian_searxng"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,9 @@
+librarian-searxng
+Copyright (c) 2026 Kevin J. Smith (https://github.com/kevin-j-smith/librarian-searxng)
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This package drives a SearXNG instance (https://github.com/searxng/searxng,
+AGPL-3.0) over HTTP and starts the upstream searxng/searxng Docker image. It
+contains no SearXNG code. settings.yml is an override file merged over
+SearXNG's defaults (use_default_settings: true), written for this project.

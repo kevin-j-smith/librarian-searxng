@@ -1,0 +1,171 @@
+# Override merged over SearXNG's own defaults (use_default_settings).
+#
+# Two jobs: turn on the JSON output format librarian's SearxngProvider needs
+# (off by default upstream) and disable the bot-rate-limiter - safe here
+# because this instance is bound to 127.0.0.1 and only ever called by
+# librarian itself.
+#
+# ...and, since 2026-08-27, a third: fix the engine set. A head-to-head
+# against WebSearch (evals/searches/RESULTS-2026-08-27.md) found that three
+# of the four general-category web engines SearXNG enables by default were
+# failing - brave "too many requests", duckduckgo CAPTCHA, startpage
+# "Suspended: CAPTCHA" - so every general result came from `google cse`
+# alone. A meta search aggregating one engine is not a meta search, and that
+# showed up as an apparent index gap that did not exist.
+#
+# Re-probed 2026-08-28 and the set had already moved: `google cse` and brave
+# now refuse, `google` (disabled the day before as CAPTCHA) answers cleanly,
+# and mojeek returns zero without ever reporting a failure. The engine set is
+# perishable. Treat every comment below as a dated observation, re-run the
+# curl at the bottom of this header before relying on one, and remember that
+# the surviving engines still returned 29-34 results over 21-32 domains per
+# query - a narrowed pool, not a broken one.
+use_default_settings: true
+
+general:
+  instance_name: "librarian-searxng"
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  # Loopback-only instance, not internet-reachable - a static secret is fine.
+  secret_key: "librarian-local-only"
+  limiter: false
+  bind_address: "0.0.0.0"
+
+outgoing:
+  # Upstream defaults to 3.0s per engine. That is tight for a container
+  # reaching remote engines on a home connection, and a timeout is
+  # indistinguishable from an engine having nothing to say - it just silently
+  # narrows the result pool. Widening it costs latency on a slow engine, not
+  # correctness.
+  request_timeout: 8.0
+  max_request_timeout: 15.0
+  pool_connections: 100
+  pool_maxsize: 20
+
+# Each entry below was verified against a live query on 2026-08-27 before
+# being turned on or off; the comment records what it actually did. Re-check
+# with:
+#   curl -s 'http://127.0.0.1:8080/search?q=test&format=json&engines=<name>'
+# and look at `unresponsive_engines`.
+engines:
+  # ─── general: mainstream indexes ────────────────────────────────────────
+  # Re-probed 2026-08-31 *under pacing*, 5 queries per engine, and the result
+  # overturned the set chosen on 08-28. That earlier probe was taken during a
+  # window this repo's own unpaced eval had rate-limited, so it read
+  # rate-limiting as refusal and disabled two engines that work. Measure
+  # engines when the address is not already in the doghouse, or the
+  # measurement records the doghouse.
+  #
+  #   engine           answered  avg results
+  #   google cse          5/5        20
+  #   yep                 5/5        20
+  #   yandex              5/5        12
+  #   bing                5/5        10
+  #   duckduckgo web      5/5        10
+  #
+  # Every engine below is 5/5. That is the point: an engine that answers
+  # sometimes puts run-to-run variance into every result set, which is the
+  # confound the pacing work exists to remove. Intermittent engines are off
+  # even when they are free.
+  - name: google cse
+    disabled: false    # 20 results/query, the deepest single source here
+  - name: yep
+    disabled: false    # 20 results/query; the 08-28 "access denied" was the
+                       # rate-limited window, not a standing refusal
+  - name: yandex
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: duckduckgo web
+    disabled: false    # upstream's HTML-endpoint DDG; the JSON one CAPTCHAs
+
+  # ─── off: measured 2026-08-31 under pacing, 5 queries each ──────────────
+  # Leaving a refusing engine enabled is not free - it holds a request slot
+  # and adds latency to every search for a guaranteed zero.
+  - name: brave
+    disabled: true    # 2/5. Worth 20 results when it lands, but a 40% engine
+                      # is exactly the run-to-run variance we are removing.
+  - name: qwant
+    disabled: true    # 1/5, CAPTCHA
+  - name: duckduckgo
+    disabled: true    # 0/5, CAPTCHA on every query - use `duckduckgo web`
+  - name: startpage
+    disabled: true    # 0/5, CAPTCHA (suspended_time=3600)
+  - name: mojeek
+    disabled: true    # 0/5 and *silent* - zero results, never appears in
+                      # `unresponsive_engines`. See providers.silent_engines.
+
+  # `google` (the scraper engine) is not rate-limited - it is obsolete, which
+  # is a different thing and worth not re-litigating. It requests
+  # `/wml/search` with a Nokia feature-phone User-Agent and parses the WML
+  # markup that used to come back. Isolated 2026-08-31, same host, same
+  # second:
+  #
+  #   /wml/search + Nokia UA   -> 429 challenge
+  #   /search     + Nokia UA   -> 429 challenge
+  #   /wml/search + Chrome UA  -> 200 (but modern markup, not WML)
+  #   /search     + Chrome UA  -> 200 (modern markup)
+  #
+  # So the User-Agent is the trigger and the endpoint is irrelevant, and no
+  # combination returns the WML markup `response()` parses. Swapping the UA
+  # would need the parser rewritten against Google's obfuscated desktop
+  # markup - a treadmill, and unnecessary: `google cse` reaches the same
+  # index at 20 results/query with none of it. One more reason to leave it
+  # off: a single CAPTCHA suspends an engine for 3600s, so one failure costs
+  # every query in the following hour, not just its own.
+  - name: google
+    disabled: true    # 0/5
+
+  # ─── science: primary literature ────────────────────────────────────────
+  # crossref and openalex are the two largest scholarly metadata indexes
+  # (~150M DOIs, ~250M works) and were both off by default. Enabling them is
+  # the direct fix for the quantum scenario, where the papers WebSearch
+  # returned existed in the index but were never asked for.
+  - name: crossref
+    disabled: false
+  - name: openalex
+    disabled: false
+    # `mailto` is OpenAlex's documented "polite pool" opt-in - a contact
+    # address in exchange for a reliable share, not a workaround. Set it to
+    # YOUR OWN address (in a copy of this file, via SEARXNG_SETTINGS_PATH):
+    #     mailto: "you@example.com"
+    # It is deliberately unset here, because a default would send one
+    # person's address with every user's queries.
+    #
+    # It did NOT fix the 429s, and the reason is worth writing down: the
+    # parameter is demonstrably applied (it appears in the request URL in the
+    # container log), but a direct `api.openalex.org` call from the host
+    # returns 429 *with or without* it. So this address is rate-limited by
+    # OpenAlex at the network level and the polite pool cannot reach past
+    # that. Left enabled rather than disabled under the startpage/yep rule
+    # because it fails fast (~0.1s, not a timeout) and costs nearly nothing,
+    # and because crossref covers much of the same metadata meanwhile.
+  - name: arxiv
+    disabled: false
+  - name: semantic scholar
+    disabled: false
+  - name: pubmed
+    disabled: false
+  - name: openairepublications
+    disabled: false
+  - name: openairedatasets
+    disabled: false
+  - name: google scholar
+    disabled: true    # "access denied" on every query
+
+  # Never loaded (`inactive`, not just disabled), because at startup they only
+  # produce errors and never contribute research results. 2026-09-24:
+  # ahmia and torch are Tor engines that fail to load without a Tor proxy;
+  # wikidata's SPARQL init returned 403 and it is an infobox engine that adds
+  # no result URLs anyway.
+  - name: ahmia
+    inactive: true
+  - name: torch
+    inactive: true
+  - name: wikidata
+    inactive: true

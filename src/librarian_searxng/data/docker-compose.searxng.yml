@@ -1,0 +1,28 @@
+# Local SearXNG metasearch for librarian's research loop.
+#
+# Started and stopped on demand by librarian_searxng/container.py
+# (`docker compose -p <project> -f <this file> up -d` / `stop`), never by
+# librarian's own server startup. Run with project name "librarian" by
+# default, so a container and volume created before this plugin existed are
+# reused rather than duplicated.
+#
+# Bound to 127.0.0.1 only: queries never leave localhost to reach this
+# container, even though SearXNG itself then reaches out to upstream search
+# engines on the internet to answer them. Which engines, and on what terms,
+# is configured in settings.yml beside this file (or the file named by
+# SEARXNG_SETTINGS_PATH) and is the operator's choice.
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: librarian-searxng
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    environment:
+      - SEARXNG_BASE_URL=http://127.0.0.1:8080/
+    volumes:
+      - ${LIBRARIAN_SEARXNG_SETTINGS:-./settings.yml}:/etc/searxng/settings.yml:ro
+      - searxng-data:/var/cache/searxng
+
+volumes:
+  searxng-data:
