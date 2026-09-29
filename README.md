@@ -34,6 +34,9 @@ default deliberately leaves it unset.
 Install **into the same environment as librarian**:
 
 ```bash
+# from PyPI
+uv pip install librarian-searxng        # or: pip install librarian-searxng
+
 # from GitHub
 uv pip install git+https://github.com/kevin-j-smith/librarian-searxng
 
@@ -42,11 +45,16 @@ cd librarian
 uv pip install -e ../librarian-searxng
 ```
 
+librarian itself is not a declared dependency, and pip will not install it
+for you. librarian is not published on PyPI, and the PyPI project named
+`librarian` is an unrelated package. Install librarian first, from its
+repository, then add this plugin to that environment.
+
 > With a `uv`-managed librarian checkout, a plain `uv sync` removes packages
 > that aren't in librarian's lockfile, and this one isn't (on purpose). Run
 > the install command again after `uv sync`, or use `uv sync --inexact`.
 
-For a tool install: `uv tool install git+https://github.com/kevin-j-smith/librarian --with git+https://github.com/kevin-j-smith/librarian-searxng`.
+For a tool install: `uv tool install git+https://github.com/kevin-j-smith/librarian --with librarian-searxng`.
 
 Then, in librarian's `.env`:
 
@@ -100,7 +108,7 @@ request and the pacing delay.
 Results come back unfiltered, in SearXNG's order. librarian applies the
 same topical gate, media filter, dedup, ranking, and caps to every backend.
 Engines SearXNG reports as refusing come back as `degraded`, so librarian
-can log and record them. See [DESIGN.md](DESIGN.md) for the measurements
+can log and record them. See [DESIGN.md](https://github.com/kevin-j-smith/librarian-searxng/blob/main/DESIGN.md) for the measurements
 behind pacing, paging, and the engine set.
 
 ## Development
@@ -112,7 +120,7 @@ cd ../librarian-searxng && uv run --project ../librarian --no-sync python -m pyt
 
 ## License
 
-Apache License 2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). This
+Apache License 2.0; see [LICENSE](https://github.com/kevin-j-smith/librarian-searxng/blob/main/LICENSE) and [NOTICE](https://github.com/kevin-j-smith/librarian-searxng/blob/main/NOTICE). This
 package is licensed independently of librarian, which is source-available
 under its own terms. This package contains no SearXNG code. It talks to
 SearXNG (AGPL-3.0) over HTTP and starts the upstream `searxng/searxng`

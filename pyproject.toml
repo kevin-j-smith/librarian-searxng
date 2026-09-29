@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "librarian-searxng"
-version = "0.1.0"
+dynamic = ["version"]
 description = "SearXNG search backend plugin for librarian's research loop"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,20 +12,50 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Kevin J. Smith" }]
 keywords = ["librarian", "searxng", "metasearch", "research", "plugin"]
-# `librarian` is expected to be installed already: this plugin is installed
-# *into* librarian's environment (see README). It is not on PyPI under this
-# name, so do not expect pip to fetch it.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Plugins",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+# librarian itself is deliberately NOT listed. This plugin is installed *into*
+# an existing librarian environment (see README), and librarian is not on PyPI:
+# the PyPI project named `librarian` is an unrelated card-game library, so
+# declaring `librarian>=0.1` would make pip install that instead. PyPI also
+# rejects direct git references in dependencies.
 dependencies = [
-    "librarian>=0.1",
     "httpx>=0.27",
 ]
 
 [project.urls]
 Homepage = "https://github.com/kevin-j-smith/librarian-searxng"
+Source = "https://github.com/kevin-j-smith/librarian-searxng"
+Issues = "https://github.com/kevin-j-smith/librarian-searxng/issues"
+Changelog = "https://github.com/kevin-j-smith/librarian-searxng/blob/main/CHANGELOG.md"
 librarian = "https://github.com/kevin-j-smith/librarian"
 
 [project.entry-points."librarian.search_backends"]
 searxng = "librarian_searxng.backend:SearxngBackend"
+
+[tool.hatch.version]
+path = "src/librarian_searxng/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/",
+    "tests/",
+    "CHANGELOG.md",
+    "DESIGN.md",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/librarian_searxng"]

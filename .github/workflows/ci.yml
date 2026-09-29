@@ -32,3 +32,13 @@ jobs:
       - name: Test
         working-directory: librarian-searxng
         run: ../librarian/.venv/bin/python -m pytest tests -q
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Check metadata renders on PyPI
+        run: uvx twine check --strict dist/*
