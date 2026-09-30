@@ -53,14 +53,9 @@ class SearxngBackend:
             # One page. The request is exactly the pre-split one (no pageno),
             # so its cached responses still match. The media-URL filter is
             # librarian's, applied after this returns.
-            resp = client.throttled_get(
-                f"{self.base_url}/search",
-                {"q": query, "format": "json", "categories": "videos"},
+            payload, degraded = client.search_json(
+                self.base_url, {"q": query, "format": "json", "categories": "videos"},
                 20, "videos", cache=cache)
-            resp.raise_for_status()
-            payload = resp.json()
-            for entry in payload.get("unresponsive_engines") or []:
-                degraded.append((str(entry[0]), str(entry[1]) if len(entry) > 1 else ""))
             items = [i for i in payload.get("results", []) if i.get("url")]
             return SearchResponse([_result(i) for i in items], degraded)
 

@@ -66,6 +66,41 @@ compilation: the compilation layer above it (`_paged_search`,
 `merge_results`, `document_key`, `is_on_topic`, `rank_by_relevance`) is the
 part that already works, and owning the adapters means owning the CAPTCHAs.
 See `evals/searches/RESULTS-2026-08-28.md`.
+## Refusing engines cool down
+
+(`health.py`, `client.search_json`, `SEARXNG_ENGINE_COOLDOWN_SECONDS`;
+librarian roadmap 6.4.) Reporting a refusal was only half of it: the
+engine was still asked on every later page and search. A search walks up
+to four pages, each a full fan-out, so an engine that refused page 1 was
+asked three more times in the same search, each time holding the request
+open until its timeout, and a rate-limited engine asked again stays
+rate-limited longer (one CAPTCHA suspends an engine for an hour). Now each
+real search records its refusals, and a cooling engine is left out with
+SearXNG's `disabled_engines` parameter (`name__category`). Checked live
+before relying on it: on a general query, `disabled_engines=yep__general`
+removed yep's 20 results while duckduckgo web, google cse, yandex and bing
+answered as before. Then live through the backend: a science search
+found openalex answering "too many requests"; the next skipped it and
+reported `openalex: skipped for 600s more after refusing: too many
+requests`. The rules, and why each: a rate-limit refusal (too many
+requests, CAPTCHA, access denied, SearXNG's own "Suspended") cools an
+engine at once, because asking again is what extends it, while a
+transient one (timeout, network or HTTP error, a parser failure) needs
+two in a row, so one slow answer costs nothing. The cooldown doubles for
+each refusal in a row after that (up to 16 times) and one answer clears
+the record. **It never skips a category's last engines**: skipping needs
+SearXNG's enabled-engine list (`/config`, local and unpaced, cached ten
+minutes), and happens only while at least one enabled engine isn't
+cooling, so a network outage that trips every engine can't go on emptying
+every search after it ends; without the list nothing is skipped. **Skips
+are reported** as `degraded` like refusals, because a narrowed pool must
+never read as a thin topic. **The cache is untouched**: the key is the
+request without the skip list, a replayed response neither skips nor
+teaches the tracker anything (it says nothing about an engine now), so
+eval fixtures replay as before. State is per process and per category,
+since the categories query different engines. The diagnostics
+(`engine_health`, `silent_engines`) never skip: they exist to ask.
+
 ## Outgoing SearXNG queries are paced
 
 (`providers._throttled_get`,

@@ -20,6 +20,7 @@ from librarian.research import search_cache
 from librarian.research.search_cache import CachePolicy
 
 from .config import settings
+from .health import cooldowns
 
 logger = logging.getLogger("librarian_searxng.client")
 
@@ -94,12 +95,17 @@ def _pace(bucket: str) -> None:
 
 
 def throttled_get(url: str, params: dict, timeout: float, category: str | None,
-                  *, cache: CachePolicy | None = None, use_cache: bool = True):
+                  *, cache: CachePolicy | None = None, use_cache: bool = True,
+                  skip: list[str] | None = None):
     """One HTTP GET to SearXNG: served from cache if possible, else paced.
 
     A cache hit returns *before* the pacing sleep: nothing goes upstream, so
     nothing is owed to an engine. Only successful, parseable responses are
     stored; a cached 429 would turn one bad minute into a bad day.
+
+    `skip` names engines ("name__category") to leave out of this request
+    (health.py). The cache key is `params` without it, so a replay matches
+    whatever engines were cooling when the response was stored.
     """
     if use_cache:
         payload = search_cache.lookup(url, params, namespace(), cache)
@@ -107,7 +113,8 @@ def throttled_get(url: str, params: dict, timeout: float, category: str | None,
             logger.debug("cache hit %s", params.get("q"))
             return CachedResponse(payload)
     _pace(category or "general")
-    resp = httpx.get(url, params=params, timeout=timeout, headers=_LOCAL_HEADERS)
+    sent = {**params, "disabled_engines": ",".join(skip)} if skip else params
+    resp = httpx.get(url, params=sent, timeout=timeout, headers=_LOCAL_HEADERS)
     if use_cache and search_cache.enabled(cache):
         try:
             resp.raise_for_status()
@@ -115,6 +122,59 @@ def throttled_get(url: str, params: dict, timeout: float, category: str | None,
         except Exception:
             pass
     return resp
+
+
+def _refusals(payload: dict) -> list[tuple[str, str]]:
+    return [(str(e[0]), str(e[1]) if len(e) > 1 else "")
+            for e in payload.get("unresponsive_engines") or []]
+
+
+_enabled_cache: dict[tuple[str, str], tuple[float, frozenset]] = {}
+_ENABLED_TTL = 600.0
+
+
+def enabled_engines(base_url: str, category: str) -> frozenset | None:
+    """Engines SearXNG has enabled in `category`, from /config (local, never
+    upstream, so unpaced), cached a few minutes. None if unknown."""
+    key = (base_url, category)
+    hit = _enabled_cache.get(key)
+    if hit and time.monotonic() - hit[0] < _ENABLED_TTL:
+        return hit[1]
+    try:
+        config = httpx.get(f"{base_url}/config", timeout=10, headers=_LOCAL_HEADERS).json()
+    except Exception:
+        return None
+    names = frozenset(e["name"] for e in config.get("engines") or []
+                      if e.get("enabled") and category in (e.get("categories") or []))
+    _enabled_cache[key] = (time.monotonic(), names)
+    return names
+
+
+def search_json(base_url: str, params: dict, timeout: float, category: str | None,
+                cache: CachePolicy | None = None) -> tuple[dict, list[tuple[str, str]]]:
+    """One search request with the engine-health fallback (health.py): the
+    payload, and every engine that refused or was skipped as (engine, reason).
+
+    Cooling engines are skipped only while at least one enabled engine in the
+    category is not cooling, and only when SearXNG's engine list is known:
+    without it, nothing is skipped, which is how every search ran before.
+    """
+    bucket = category or "general"
+    cooling = cooldowns.cooling(bucket)
+    skip: dict[str, str] = {}
+    if cooling:
+        enabled = enabled_engines(base_url, bucket)
+        if enabled and enabled - set(cooling):
+            skip = {e: why for e, why in cooling.items() if e in enabled}
+    resp = throttled_get(f"{base_url}/search", params, timeout, category, cache=cache,
+                         skip=[f"{e}__{bucket}" for e in sorted(skip)])
+    resp.raise_for_status()
+    payload = resp.json()
+    refused = _refusals(payload)
+    if getattr(resp, "from_cache", False):
+        return payload, refused          # nothing was asked, so nothing skipped or learned
+    cooldowns.note(bucket, refused, set(skip))
+    return payload, refused + sorted(skip.items())
 
 
 def paged_search(base_url: str, query: str, count: int, categories: str | None = None,
@@ -136,15 +196,12 @@ def paged_search(base_url: str, query: str, count: int, categories: str | None =
         params = {"q": query, "format": "json", "pageno": page}
         if categories:
             params["categories"] = categories
-        resp = throttled_get(f"{base_url}/search", params, 20, categories, cache=cache)
-        resp.raise_for_status()
-        payload = resp.json()
+        payload, degraded = search_json(base_url, params, 20, categories, cache=cache)
         if unresponsive is not None:
-            for entry in payload.get("unresponsive_engines") or []:
-                name = str(entry[0])
+            for name, reason in degraded:
                 if name not in reported:
                     reported.add(name)
-                    unresponsive.append((name, str(entry[1]) if len(entry) > 1 else ""))
+                    unresponsive.append((name, reason))
         items = payload.get("results", [])
         if not items:
             return

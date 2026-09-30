@@ -92,6 +92,7 @@ package, so existing setups keep working).
 | `SEARXNG_MIN_INTERVAL_SECONDS` | `4.0` | Minimum gap between outgoing queries per category. `0` disables pacing. |
 | `SEARXNG_JITTER_SECONDS` | `3.0` | Random extra delay, from 0 to this many seconds, so queries aren't sent on a fixed beat |
 | `SEARXNG_MAX_PAGES` | `4` | Result pages per search. Each page queries every engine again. |
+| `SEARXNG_ENGINE_COOLDOWN_SECONDS` | `600` | An engine that refuses (rate limit or CAPTCHA at once, a timeout or error twice in a row) is left out of requests for this long, doubling while it keeps refusing (up to 16 times). `0` asks every engine every time. |
 
 Response caching is librarian's (`SEARCH_CACHE_*` in librarian's
 configuration docs). This backend uses it, so a cache hit skips both the
@@ -108,7 +109,9 @@ request and the pacing delay.
 Results come back unfiltered, in SearXNG's order. librarian applies the
 same topical gate, media filter, dedup, ranking, and caps to every backend.
 Engines SearXNG reports as refusing come back as `degraded`, so librarian
-can log and record them. See [DESIGN.md](https://github.com/kevin-j-smith/librarian-searxng/blob/main/DESIGN.md) for the measurements
+can log and record them. So do engines this backend is skipping while they
+cool down (`SEARXNG_ENGINE_COOLDOWN_SECONDS`), with the reason and the
+time left. It never skips every enabled engine in a category. See [DESIGN.md](https://github.com/kevin-j-smith/librarian-searxng/blob/main/DESIGN.md) for the measurements
 behind pacing, paging, and the engine set.
 
 ## Development

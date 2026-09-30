@@ -53,6 +53,10 @@ class SearxngSettings:
     # the largest single amplifier of rate-limit cost.
     max_pages: int = field(
         default_factory=lambda: int(os.environ.get("SEARXNG_MAX_PAGES", "4")))
+    # Engine-health fallback (health.py): an engine that refuses is left out
+    # of requests for this long, doubling while it keeps refusing. 0 = off.
+    engine_cooldown_seconds: float = field(
+        default_factory=lambda: _float("SEARXNG_ENGINE_COOLDOWN_SECONDS", "600"))
 
 
 settings = SearxngSettings()
